@@ -558,6 +558,25 @@ On a project header: toggle collapse."
 ;;;; Entry point
 
 ;;;###autoload
+(defun agent-shell-hq-toggle-dwim ()
+  "Switch to the agent-shell HQ sidebar, or toggle close it if already focused.
+
+If the sidebar is currently selected, close the HQ workspace and
+return to the previous perspective.
+If the sidebar window is visible but not selected, select it.
+Otherwise, open the HQ workspace."
+  (interactive)
+  (let ((sidebar-win (get-buffer-window agent-shell-hq-toggle--sidebar-name)))
+    (if (and sidebar-win (eq (selected-window) sidebar-win))
+        (agent-shell-hq-toggle)
+      (if (and sidebar-win (window-live-p sidebar-win))
+          (select-window sidebar-win)
+        (agent-shell-hq-toggle)))))
+
+;;;###autoload
+(defalias 'agent-shell-hq-toggle-jump-to-sidebar #'agent-shell-hq-toggle-dwim)
+
+;;;###autoload
 (defun agent-shell-hq-toggle ()
   "Toggle the agent-shell HQ workspace.
 
