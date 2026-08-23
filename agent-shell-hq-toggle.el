@@ -301,6 +301,7 @@ against the bottom of the sidebar window regardless of session count."
               (dolist (buf bufs)
                 (let* ((state (agent-shell-hq-peek--buffer-state buf))
                        (icon  (agent-shell-hq-peek--svg-icon state))
+                       (aicon (agent-shell-hq-peek--agent-icon buf))
                        (bname (buffer-name buf)))
                   (push (list :type 'buffer :buffer buf :root root)
                         agent-shell-hq-toggle--entries)
@@ -308,6 +309,7 @@ against the bottom of the sidebar window regardless of session count."
                            (concat "    "
                                    (propertize " " 'display icon)
                                    " "
+                                   (if aicon (concat aicon " ") "")
                                    bname
                                    "\n")
                            'face 'default
