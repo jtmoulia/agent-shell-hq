@@ -50,6 +50,9 @@ One of `top', `bottom', `left', `right'."
 (defvar agent-shell-hq-peek--origin-window nil
   "Window that was selected when peek was invoked.")
 
+(defvar agent-shell-hq-peek--origin-frame nil
+  "Frame that was selected when peek was invoked.")
+
 (defvar agent-shell-hq-peek--origin-buffer nil
   "Buffer displayed in the origin window when peek was invoked (restored on quit).")
 
@@ -89,9 +92,24 @@ One of `top', `bottom', `left', `right'."
 
 (defun agent-shell-hq-peek--clear-override ()
   "Restore `overriding-terminal-local-map' to its pre-peek value."
-  (when (eq overriding-terminal-local-map agent-shell-hq-peek--quit-override-map)
-    (setq overriding-terminal-local-map agent-shell-hq-peek--saved-terminal-map))
-  (setq agent-shell-hq-peek--saved-terminal-map nil))
+  (setq overriding-terminal-local-map agent-shell-hq-peek--saved-terminal-map
+        agent-shell-hq-peek--saved-terminal-map nil))
+
+(defun agent-shell-hq-peek--dismiss ()
+  "Dismiss the posframe, restore terminal map, and restore frame focus."
+  (agent-shell-hq-peek--clear-override)
+  (let ((frame agent-shell-hq-peek--origin-frame)
+        (win   agent-shell-hq-peek--origin-window))
+    (when (frame-live-p frame)
+      (select-frame-set-input-focus frame))
+    (when (window-live-p win)
+      (select-window win))
+    (posframe-delete agent-shell-hq-peek--buffer-name)
+    (when-let ((pb (get-buffer agent-shell-hq-peek--buffer-name)))
+      (kill-buffer pb))
+    (setq agent-shell-hq-peek--entries      nil
+          agent-shell-hq-peek--current-idx  0
+          agent-shell-hq-peek--origin-frame nil)))
 
 ;;;; Preferred display buffer
 
@@ -291,46 +309,48 @@ Uses the existing viewport buffer when one already exists, so its mode
 (defun agent-shell-hq-peek-select ()
   "Confirm the highlighted buffer, switch to it, and dismiss the posframe."
   (interactive)
-  (when-let* ((entry     (nth agent-shell-hq-peek--current-idx
-                              agent-shell-hq-peek--entries))
-              (shell-buf (plist-get entry :buffer))
-              (disp-buf  (agent-shell-hq-peek--preferred-buffer shell-buf)))
-    (let ((win agent-shell-hq-peek--origin-window))
-      (agent-shell-hq-peek--clear-override)
-      (posframe-delete agent-shell-hq-peek--buffer-name)
-      (when-let ((pb (get-buffer agent-shell-hq-peek--buffer-name)))
-        (kill-buffer pb))
-      (setq agent-shell-hq-peek--entries    nil
-            agent-shell-hq-peek--current-idx 0)
-      (when (and (window-live-p win) (buffer-live-p disp-buf))
-        (select-window win)
-        (switch-to-buffer disp-buf)))))
+  (let* ((entry     (nth agent-shell-hq-peek--current-idx
+                          agent-shell-hq-peek--entries))
+         (shell-buf (when entry (plist-get entry :buffer)))
+         (disp-buf  (when shell-buf (agent-shell-hq-peek--preferred-buffer shell-buf)))
+         (win       agent-shell-hq-peek--origin-window)
+         (frame     agent-shell-hq-peek--origin-frame))
+    (agent-shell-hq-peek--dismiss)
+    (when (frame-live-p frame)
+      (select-frame-set-input-focus frame))
+    (when (and (window-live-p win) (buffer-live-p disp-buf))
+      (select-window win)
+      (switch-to-buffer disp-buf))))
 
 (defun agent-shell-hq-peek-prompt-queue ()
   "Prompt for input and enqueue or send it to the highlighted agent-shell session."
   (interactive)
-  (when-let* ((entry     (nth agent-shell-hq-peek--current-idx
-                              agent-shell-hq-peek--entries))
-              (shell-buf (plist-get entry :buffer))
-              ((buffer-live-p shell-buf)))
-    (agent-shell-hq-peek-quit)
-    (with-current-buffer shell-buf
-      (let ((prompt (agent-shell--prompt-queue-read)))
-        (when (and prompt (not (string-empty-p prompt)))
-          (agent-shell-prompt-queue prompt))))))
+  (let* ((entry     (nth agent-shell-hq-peek--current-idx
+                          agent-shell-hq-peek--entries))
+         (shell-buf (when entry (plist-get entry :buffer)))
+         (win       agent-shell-hq-peek--origin-window)
+         (frame     agent-shell-hq-peek--origin-frame))
+    (agent-shell-hq-peek--dismiss)
+    (when (frame-live-p frame)
+      (select-frame-set-input-focus frame))
+    (when (window-live-p win)
+      (select-window win))
+    (when (buffer-live-p shell-buf)
+      (with-current-buffer shell-buf
+        (let ((prompt (agent-shell--prompt-queue-read)))
+          (when (and prompt (not (string-empty-p prompt)))
+            (agent-shell-prompt-queue prompt)))))))
 
 (defun agent-shell-hq-peek-quit ()
   "Dismiss the peek posframe and restore the original buffer."
   (interactive)
-  (agent-shell-hq-peek--clear-override)
-  (let ((win      agent-shell-hq-peek--origin-window)
-        (orig-buf agent-shell-hq-peek--origin-buffer))
-    (posframe-delete agent-shell-hq-peek--buffer-name)
-    (when-let ((buf (get-buffer agent-shell-hq-peek--buffer-name)))
-      (kill-buffer buf))
-    (setq agent-shell-hq-peek--entries      nil
-          agent-shell-hq-peek--current-idx  0
-          agent-shell-hq-peek--origin-buffer nil)
+  (let ((win       agent-shell-hq-peek--origin-window)
+        (frame     agent-shell-hq-peek--origin-frame)
+        (orig-buf  agent-shell-hq-peek--origin-buffer))
+    (agent-shell-hq-peek--dismiss)
+    (setq agent-shell-hq-peek--origin-buffer nil)
+    (when (frame-live-p frame)
+      (select-frame-set-input-focus frame))
     (when (window-live-p win)
       (select-window win)
       (when (and (buffer-live-p orig-buf)
@@ -340,8 +360,11 @@ Uses the existing viewport buffer when one already exists, so its mode
 (defun agent-shell-hq-peek-new-shell ()
   "Launch a new agent-shell in the current project and dismiss peek."
   (interactive)
-  (let ((win agent-shell-hq-peek--origin-window))
-    (agent-shell-hq-peek-quit)
+  (let ((win   agent-shell-hq-peek--origin-window)
+        (frame agent-shell-hq-peek--origin-frame))
+    (agent-shell-hq-peek--dismiss)
+    (when (frame-live-p frame)
+      (select-frame-set-input-focus frame))
     (when (window-live-p win)
       (select-window win)
       (agent-shell-new-shell))))
@@ -359,7 +382,8 @@ n/p navigates, RET selects, i/m queues prompt, g/q/C-g quits."
     (unless groups
       (user-error "No agent-shell buffers found"))
     (setq agent-shell-hq-peek--origin-window origin-win
-          agent-shell-hq-peek--origin-buffer  (window-buffer origin-win)
+          agent-shell-hq-peek--origin-frame  (window-frame origin-win)
+          agent-shell-hq-peek--origin-buffer (window-buffer origin-win)
           agent-shell-hq-peek--current-idx   0)
     (agent-shell-hq-peek--render groups)
     (agent-shell-hq-peek--highlight-line 0)
