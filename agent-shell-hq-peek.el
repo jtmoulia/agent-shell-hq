@@ -32,6 +32,10 @@ One of `top', `bottom', `left', `right'."
   "Maximum height of the peek posframe in rows."
   :type 'integer)
 
+(defcustom agent-shell-hq-show-agent-icons t
+  "Whether to display agent icons next to buffer entries in HQ listings."
+  :type 'boolean)
+
 ;;;; Faces
 
 (defface agent-shell-hq-peek-project
@@ -173,7 +177,8 @@ Uses the existing viewport buffer when one already exists, so its mode
 
 (defun agent-shell-hq-peek--agent-icon (buf)
   "Return an image display string for the agent in BUF, or nil."
-  (when (buffer-live-p buf)
+  (when (and agent-shell-hq-show-agent-icons
+             (buffer-live-p buf))
     (with-current-buffer buf
       (when (and (boundp 'agent-shell--state) agent-shell--state)
         (when-let ((config (map-elt agent-shell--state :agent-config)))
