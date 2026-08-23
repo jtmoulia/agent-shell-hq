@@ -40,6 +40,7 @@ pointing to `my/agent-shell-share-project-file' and
   '(((agent-shell-hq-toggle-next agent-shell-hq-toggle-prev) . "navigate")
     (agent-shell-hq-toggle-select                            . "select")
     (agent-shell-hq-toggle-collapse                          . "collapse")
+    (agent-shell-hq-toggle-prompt-queue                      . "queue prompt")
     (agent-shell-hq-toggle-label-current                     . "label")
     (agent-shell-hq-toggle-label-all                         . "label all")
     (agent-shell-hq-toggle-kill-current                      . "kill")
@@ -107,6 +108,8 @@ Intentionally dim — just enough to show position without glare.")
     (define-key map (kbd "p")             #'agent-shell-hq-toggle-prev)
     (define-key map (kbd "RET")           #'agent-shell-hq-toggle-select)
     (define-key map (kbd "TAB")           #'agent-shell-hq-toggle-collapse)
+    (define-key map (kbd "m")             #'agent-shell-hq-toggle-prompt-queue)
+    (define-key map (kbd "i")             #'agent-shell-hq-toggle-prompt-queue)
     (define-key map (kbd "r")             #'agent-shell-hq-toggle-label-current)
     (define-key map (kbd "R")             #'agent-shell-hq-toggle-label-all)
     (define-key map (kbd "K")             #'agent-shell-hq-toggle-kill-current)
@@ -439,6 +442,20 @@ On a project header: toggle collapse."
         (setq agent-shell-hq-toggle--current-idx new-idx)
         (agent-shell-hq-toggle--highlight new-idx)))))
 
+(defun agent-shell-hq-toggle-prompt-queue ()
+  "Prompt for input and enqueue or send it to the highlighted session."
+  (interactive)
+  (when-let* ((entry     (nth agent-shell-hq-toggle--current-idx
+                              agent-shell-hq-toggle--entries))
+              ((eq (plist-get entry :type) 'buffer))
+              (shell-buf (plist-get entry :buffer))
+              ((buffer-live-p shell-buf)))
+    (with-current-buffer shell-buf
+      (let ((prompt (agent-shell--prompt-queue-read)))
+        (when (and prompt (not (string-empty-p prompt)))
+          (agent-shell-prompt-queue prompt))))
+    (agent-shell-hq-toggle-refresh)))
+
 (defun agent-shell-hq-toggle-label-current ()
   "Send a rename prompt for the highlighted buffer entry."
   (interactive)
@@ -552,6 +569,7 @@ Sidebar keys:
   n/p    navigate and preview
   RET    select buffer / toggle project collapse
   TAB    collapse / expand project group
+  i/m    queue or send prompt to session
   r      label current session
   R      label all sessions
   K      kill current session + terminal

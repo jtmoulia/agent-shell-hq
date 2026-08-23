@@ -76,6 +76,8 @@ One of `top', `bottom', `left', `right'."
     (define-key map (kbd "p")   #'agent-shell-hq-peek-prev)
     (define-key map (kbd "k")   #'agent-shell-hq-peek-prev)
     (define-key map (kbd "RET") #'agent-shell-hq-peek-select)
+    (define-key map (kbd "m")   #'agent-shell-hq-peek-prompt-queue)
+    (define-key map (kbd "i")   #'agent-shell-hq-peek-prompt-queue)
     (define-key map (kbd "g")   #'agent-shell-hq-peek-quit)
     (define-key map (kbd "q")   #'agent-shell-hq-peek-quit)
     (define-key map (kbd "C-g") #'agent-shell-hq-peek-quit)
@@ -218,7 +220,7 @@ Uses the existing viewport buffer when one already exists, so its mode
                        'face 'default
                        'agent-shell-hq-peek-buffer buf))))
           (insert "\n")))
-      (insert (propertize "    n/p navigate   RET select   q quit\n" 'face 'shadow))
+      (insert (propertize "    n/p navigate   RET select   i queue prompt   q quit\n" 'face 'shadow))
       (insert "\n")
       (setq agent-shell-hq-peek--entries (nreverse agent-shell-hq-peek--entries))
       (setq buffer-read-only t))
@@ -304,6 +306,19 @@ Uses the existing viewport buffer when one already exists, so its mode
         (select-window win)
         (switch-to-buffer disp-buf)))))
 
+(defun agent-shell-hq-peek-prompt-queue ()
+  "Prompt for input and enqueue or send it to the highlighted agent-shell session."
+  (interactive)
+  (when-let* ((entry     (nth agent-shell-hq-peek--current-idx
+                              agent-shell-hq-peek--entries))
+              (shell-buf (plist-get entry :buffer))
+              ((buffer-live-p shell-buf)))
+    (agent-shell-hq-peek-quit)
+    (with-current-buffer shell-buf
+      (let ((prompt (agent-shell--prompt-queue-read)))
+        (when (and prompt (not (string-empty-p prompt)))
+          (agent-shell-prompt-queue prompt))))))
+
 (defun agent-shell-hq-peek-quit ()
   "Dismiss the peek posframe and restore the original buffer."
   (interactive)
@@ -337,7 +352,7 @@ Uses the existing viewport buffer when one already exists, so its mode
 (defun agent-shell-hq-peek ()
   "Show a posframe listing all agent-shell buffers grouped by project.
 
-n/p navigates, RET selects, g/q/C-g quits."
+n/p navigates, RET selects, i/m queues prompt, g/q/C-g quits."
   (interactive)
   (let* ((origin-win   (selected-window))
          (groups       (agent-shell-hq-peek--grouped-buffers)))
