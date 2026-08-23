@@ -90,6 +90,8 @@ One of `top', `bottom', `left', `right'."
     (define-key map (kbd "q")   #'agent-shell-hq-peek-quit)
     (define-key map (kbd "C-g") #'agent-shell-hq-peek-quit)
     (define-key map (kbd "s")   #'agent-shell-hq-peek-new-shell)
+    (define-key map (kbd "l")   #'agent-shell-hq-peek-set-layout)
+    (define-key map (kbd "o")   #'agent-shell-hq-peek-set-layout)
     map)
   "Keymap active inside the agent-shell-hq peek posframe.")
 
@@ -200,6 +202,62 @@ Uses the existing viewport buffer when one already exists, so its mode
          (t 'idle)))
     'dead))
 
+;;;; Layouts
+
+(defun agent-shell-hq-layout-by-project (buf)
+  "Group BUF by its project root directory."
+  (let* ((root (with-current-buffer buf (agent-shell-cwd)))
+         (label (with-current-buffer buf (agent-shell-hq-peek--project-name root))))
+    (cons root label)))
+
+(defun agent-shell-hq-layout-by-host (buf)
+  "Group BUF by remote host (or \"localhost\")."
+  (let* ((root (with-current-buffer buf (agent-shell-cwd)))
+         (host (or (and root (file-remote-p root 'host)) "localhost")))
+    (cons host host)))
+
+(defun agent-shell-hq-layout-by-agent (buf)
+  "Group BUF by agent name."
+  (let ((name (with-current-buffer buf
+                (if (and (boundp 'agent-shell--state) agent-shell--state)
+                    (or (map-nested-elt agent-shell--state '(:agent-config :buffer-name))
+                        "Agent")
+                  "Agent"))))
+    (cons name name)))
+
+(defcustom agent-shell-hq-layouts
+  '((project . (:name "Project" :fn agent-shell-hq-layout-by-project))
+    (host    . (:name "Host"    :fn agent-shell-hq-layout-by-host))
+    (agent   . (:name "Agent"   :fn agent-shell-hq-layout-by-agent)))
+  "Alist of available grouping layouts for agent-shell-hq.
+Each entry has the form (KEY . (:name NAME :fn FN)), where FN is a function
+called with an agent-shell buffer argument returning either
+\(GROUP-ID . GROUP-LABEL) or just a GROUP-KEY."
+  :type '(alist :key-type symbol
+                :value-type (plist :options ((:name string) (:fn function))))
+  :group 'agent-shell-hq-peek)
+
+(defcustom agent-shell-hq-layout 'project
+  "Active grouping layout for agent-shell-hq buffer listings.
+Must be a key in `agent-shell-hq-layouts'."
+  :type 'symbol
+  :group 'agent-shell-hq-peek)
+
+;;;###autoload
+(defun agent-shell-hq-set-layout (layout)
+  "Set the active grouping layout for agent-shell-hq to LAYOUT."
+  (interactive
+   (let* ((choices (mapcar (lambda (entry)
+                             (cons (or (plist-get (cdr entry) :name)
+                                       (symbol-name (car entry)))
+                                   (car entry)))
+                           agent-shell-hq-layouts))
+          (selected (completing-read "Layout: " choices nil t)))
+     (list (cdr (assoc selected choices)))))
+  (setq agent-shell-hq-layout layout)
+  (when (fboundp 'agent-shell-hq-toggle-refresh)
+    (agent-shell-hq-toggle-refresh)))
+
 ;;;; Buffer grouping
 
 (defun agent-shell-hq-peek--project-name (root)
@@ -211,21 +269,34 @@ When ROOT is a remote TRAMP path, prefix the project name with the host
         (format "%s:%s" host pname)
       pname)))
 
-(defun agent-shell-hq-peek--grouped-buffers ()
-  "Return list of (root project-name buffers) groups, sorted alphabetically."
-  (let ((table (make-hash-table :test 'equal))
-        (order nil))
+(defun agent-shell-hq-peek--group-info (layout-fn buf)
+  "Call LAYOUT-FN on BUF and return (GROUP-ID . GROUP-LABEL)."
+  (let ((res (funcall layout-fn buf)))
+    (if (consp res)
+        res
+      (cons res (format "%s" res)))))
+
+(defun agent-shell-hq-peek--grouped-buffers (&optional layout)
+  "Return list of (group-id group-label buffers) groups, sorted alphabetically.
+LAYOUT specifies the grouping layout key in `agent-shell-hq-layouts',
+defaulting to `agent-shell-hq-layout'."
+  (let* ((layout-key (or layout agent-shell-hq-layout 'project))
+         (layout-entry (alist-get layout-key agent-shell-hq-layouts))
+         (layout-fn (or (plist-get layout-entry :fn) #'agent-shell-hq-layout-by-project))
+         (table (make-hash-table :test 'equal))
+         (order nil))
     (dolist (buf (agent-shell-buffers))
-      (let* ((root  (with-current-buffer buf (agent-shell-cwd)))
-             (pname (with-current-buffer buf (agent-shell-hq-peek--project-name root))))
-        (unless (gethash root table)
-          (puthash root (list pname nil) table)
-          (push root order))
-        (let ((entry (gethash root table)))
+      (let* ((info  (agent-shell-hq-peek--group-info layout-fn buf))
+             (gid   (car info))
+             (label (cdr info)))
+        (unless (gethash gid table)
+          (puthash gid (list label nil) table)
+          (push gid order))
+        (let ((entry (gethash gid table)))
           (setcar (cdr entry) (append (cadr entry) (list buf))))))
-    (let ((groups (mapcar (lambda (root)
-                            (let ((e (gethash root table)))
-                              (list root (car e)
+    (let ((groups (mapcar (lambda (gid)
+                            (let ((e (gethash gid table)))
+                              (list gid (car e)
                                     (sort (copy-sequence (cadr e))
                                           (lambda (a b)
                                             (string< (buffer-name a)
@@ -264,7 +335,7 @@ When ROOT is a remote TRAMP path, prefix the project name with the host
                        'face 'default
                        'agent-shell-hq-peek-buffer buf))))
           (insert "\n")))
-      (insert (propertize "    n/p navigate   RET select   i queue prompt   q quit\n" 'face 'shadow))
+      (insert (propertize "    n/p navigate   RET select   l layout   i queue prompt   q quit\n" 'face 'shadow))
       (insert "\n")
       (setq agent-shell-hq-peek--entries (nreverse agent-shell-hq-peek--entries))
       (setq buffer-read-only t))
@@ -382,6 +453,28 @@ When ROOT is a remote TRAMP path, prefix the project name with the host
       (when (and (buffer-live-p orig-buf)
                  (not (eq (window-buffer win) orig-buf)))
         (set-window-buffer win orig-buf)))))
+
+(defun agent-shell-hq-peek-set-layout ()
+  "Change the grouping layout while in the peek posframe."
+  (interactive)
+  (agent-shell-hq-peek--clear-override)
+  (unwind-protect
+      (call-interactively #'agent-shell-hq-set-layout)
+    (setq agent-shell-hq-peek--saved-terminal-map overriding-terminal-local-map
+          overriding-terminal-local-map agent-shell-hq-peek--quit-override-map))
+  (let ((groups (agent-shell-hq-peek--grouped-buffers)))
+    (if groups
+        (progn
+          (setq agent-shell-hq-peek--current-idx 0)
+          (agent-shell-hq-peek--render groups)
+          (agent-shell-hq-peek--highlight-line 0)
+          (agent-shell-hq-peek--preview-current)
+          (let ((pf-frame (buffer-local-value 'posframe--frame
+                                              (get-buffer agent-shell-hq-peek--buffer-name))))
+            (when (framep pf-frame)
+              (select-frame-set-input-focus pf-frame)
+              (select-window (frame-selected-window pf-frame) t))))
+      (agent-shell-hq-peek-quit))))
 
 (defun agent-shell-hq-peek-new-shell ()
   "Launch a new agent-shell in the current project and dismiss peek."
