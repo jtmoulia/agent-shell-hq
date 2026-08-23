@@ -128,6 +128,11 @@ Uses the existing viewport buffer when one already exists, so its mode
     (busy . "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\">
   <polygon points=\"10,2 18.5,17.5 1.5,17.5\" fill=\"#C9922A\"/>
 </svg>")
+    (blocked . "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\">
+  <circle cx=\"10\" cy=\"10\" r=\"8.5\" fill=\"#E67E22\"/>
+  <line x1=\"8\" y1=\"6.5\" x2=\"8\" y2=\"13.5\" stroke=\"white\" stroke-width=\"2.5\" stroke-linecap=\"round\"/>
+  <line x1=\"12\" y1=\"6.5\" x2=\"12\" y2=\"13.5\" stroke=\"white\" stroke-width=\"2.5\" stroke-linecap=\"round\"/>
+</svg>")
     (dead . "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\">
   <circle cx=\"10\" cy=\"10\" r=\"8.5\" fill=\"#C0392B\"/>
   <line x1=\"6.5\" y1=\"6.5\" x2=\"13.5\" y2=\"13.5\" stroke=\"white\" stroke-width=\"2.5\" stroke-linecap=\"round\"/>
@@ -136,7 +141,7 @@ Uses the existing viewport buffer when one already exists, so its mode
   "Inline SVG strings for each buffer state.")
 
 (defun agent-shell-hq-peek--svg-icon (state)
-  "Return the cached SVG image for STATE (`busy', `idle', or `dead')."
+  "Return the cached SVG image for STATE (`busy', `blocked', `idle', or `dead')."
   (unless agent-shell-hq-peek--icon-cache
     (setq agent-shell-hq-peek--icon-cache
           (mapcar (lambda (pair)
@@ -146,10 +151,18 @@ Uses the existing viewport buffer when one already exists, so its mode
   (alist-get state agent-shell-hq-peek--icon-cache))
 
 (defun agent-shell-hq-peek--buffer-state (buf)
-  "Return `busy', `idle', or `dead' for BUF."
+  "Return `busy', `blocked', `idle', or `dead' for BUF."
   (if (buffer-live-p buf)
       (with-current-buffer buf
-        (if (shell-maker-busy) 'busy 'idle))
+        (cond
+         ((and (fboundp 'agent-shell-status)
+               (eq (agent-shell-status :shell-buffer buf) 'blocked))
+          'blocked)
+         ((and (fboundp 'agent-shell--permission-pending-p)
+               (agent-shell--permission-pending-p :shell-buffer buf))
+          'blocked)
+         ((shell-maker-busy) 'busy)
+         (t 'idle)))
     'dead))
 
 ;;;; Buffer grouping
