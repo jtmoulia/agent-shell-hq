@@ -154,13 +154,22 @@ Uses the existing viewport buffer when one already exists, so its mode
 
 ;;;; Buffer grouping
 
+(defun agent-shell-hq-peek--project-name (root)
+  "Return the display name for the project at ROOT in the current buffer.
+When ROOT is a remote TRAMP path, prefix the project name with the host
+\(e.g. \"host:project\")."
+  (let ((pname (agent-shell--project-name)))
+    (if-let ((host (and root (file-remote-p root 'host))))
+        (format "%s:%s" host pname)
+      pname)))
+
 (defun agent-shell-hq-peek--grouped-buffers ()
   "Return list of (root project-name buffers) groups, sorted alphabetically."
   (let ((table (make-hash-table :test 'equal))
         (order nil))
     (dolist (buf (agent-shell-buffers))
       (let* ((root  (with-current-buffer buf (agent-shell-cwd)))
-             (pname (with-current-buffer buf (agent-shell--project-name))))
+             (pname (with-current-buffer buf (agent-shell-hq-peek--project-name root))))
         (unless (gethash root table)
           (puthash root (list pname nil) table)
           (push root order))
