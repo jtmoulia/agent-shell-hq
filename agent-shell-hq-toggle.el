@@ -95,11 +95,10 @@ Intentionally dim — just enough to show position without glare.")
   '((t :inherit shadow))
   "Face for descriptions in the sidebar's bottom hint footer.")
 
-;;;; Keymap
+;;;; Keymap and Mode
 
-(defvar agent-shell-hq-toggle-map
+(defvar agent-shell-hq-toggle-mode-map
   (let ((map (make-sparse-keymap)))
-    (suppress-keymap map t)
     (define-key map (kbd "n")             #'agent-shell-hq-toggle-next)
     (define-key map (kbd "j")             #'agent-shell-hq-toggle-next)
     (define-key map (kbd "p")             #'agent-shell-hq-toggle-prev)
@@ -117,6 +116,13 @@ Intentionally dim — just enough to show position without glare.")
     (define-key map (kbd "<double-mouse-1>") #'agent-shell-hq-toggle-mouse-select-double)
     map)
   "Keymap for the agent-shell-hq toggle sidebar.")
+
+(defvaralias 'agent-shell-hq-toggle-map 'agent-shell-hq-toggle-mode-map)
+
+(define-derived-mode agent-shell-hq-toggle-mode special-mode "Agent-Shell-HQ-Sidebar"
+  "Major mode for the agent-shell-hq toggle sidebar."
+  :interactive nil
+  (setq-local cursor-type nil))
 
 ;;;; Mouse commands
 
@@ -254,6 +260,8 @@ against the bottom of the sidebar window regardless of session count."
   "Render the sidebar buffer and rebuild the entries list."
   (let ((groups (agent-shell-hq-peek--grouped-buffers)))
     (with-current-buffer (get-buffer-create agent-shell-hq-toggle--sidebar-name)
+      (unless (derived-mode-p 'agent-shell-hq-toggle-mode)
+        (agent-shell-hq-toggle-mode))
       (let ((inhibit-read-only t))
         (erase-buffer)
         (setq agent-shell-hq-toggle--entries nil)
@@ -290,10 +298,7 @@ against the bottom of the sidebar window regardless of session count."
             (insert "\n")))
         (agent-shell-hq-toggle--insert-hint-footer)
         (setq agent-shell-hq-toggle--entries
-              (nreverse agent-shell-hq-toggle--entries))
-        (setq buffer-read-only t)
-        (setq-local cursor-type nil))
-      (use-local-map agent-shell-hq-toggle-map))
+              (nreverse agent-shell-hq-toggle--entries))))
     (setq agent-shell-hq-toggle--state-snapshot
           (agent-shell-hq-toggle--capture-states))))
 

@@ -66,11 +66,10 @@ One of `top', `bottom', `left', `right'."
     map)
   "Terminal-wide override map active while the peek posframe is shown.")
 
-;;;; Keymap
+;;;; Keymap and Mode
 
-(defvar agent-shell-hq-peek-map
+(defvar agent-shell-hq-peek-mode-map
   (let ((map (make-sparse-keymap)))
-    (suppress-keymap map t)
     (define-key map (kbd "n")   #'agent-shell-hq-peek-next)
     (define-key map (kbd "j")   #'agent-shell-hq-peek-next)
     (define-key map (kbd "p")   #'agent-shell-hq-peek-prev)
@@ -82,6 +81,13 @@ One of `top', `bottom', `left', `right'."
     (define-key map (kbd "s")   #'agent-shell-hq-peek-new-shell)
     map)
   "Keymap active inside the agent-shell-hq peek posframe.")
+
+(defvaralias 'agent-shell-hq-peek-map 'agent-shell-hq-peek-mode-map)
+
+(define-derived-mode agent-shell-hq-peek-mode special-mode "Agent-Shell-HQ-Peek"
+  "Major mode for the agent-shell-hq peek posframe."
+  :interactive nil
+  (setq-local cursor-type nil))
 
 ;;;; Override map helpers
 
@@ -336,7 +342,8 @@ n/p navigates, RET selects, g/q/C-g quits."
     (agent-shell-hq-peek--render groups)
     (agent-shell-hq-peek--highlight-line 0)
     (with-current-buffer agent-shell-hq-peek--buffer-name
-      (use-local-map agent-shell-hq-peek-map))
+      (unless (derived-mode-p 'agent-shell-hq-peek-mode)
+        (agent-shell-hq-peek-mode)))
     (setq agent-shell-hq-peek--saved-terminal-map overriding-terminal-local-map
           overriding-terminal-local-map agent-shell-hq-peek--quit-override-map)
     (posframe-show agent-shell-hq-peek--buffer-name

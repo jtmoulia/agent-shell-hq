@@ -14,6 +14,8 @@
 ;;; Code:
 
 (require 'agent-shell-hq-toggle)
+(require 'agent-shell-hq-peek)
+(require 'agent-shell-hq-label)
 
 (provide 'agent-shell-hq)
 ;;; agent-shell-hq.el ends here
