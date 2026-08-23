@@ -10,6 +10,7 @@
 (require 'agent-shell)
 (require 'agent-shell-viewport)
 (require 'posframe)
+(require 'map)
 
 ;;;; Customization
 
@@ -145,6 +146,15 @@ Uses the existing viewport buffer when one already exists, so its mode
                   agent-shell-hq-peek--icon-svgs)))
   (alist-get state agent-shell-hq-peek--icon-cache))
 
+(defun agent-shell-hq-peek--agent-icon (buf)
+  "Return an image display string for the agent in BUF, or nil."
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (when (and (boundp 'agent-shell--state) agent-shell--state)
+        (when-let ((config (map-elt agent-shell--state :agent-config)))
+          (when (fboundp 'agent-shell--config-icon)
+            (agent-shell--config-icon :config config)))))))
+
 (defun agent-shell-hq-peek--buffer-state (buf)
   "Return `busy', `idle', or `dead' for BUF."
   (if (buffer-live-p buf)
@@ -194,12 +204,14 @@ Uses the existing viewport buffer when one already exists, so its mode
           (dolist (buf bufs)
             (let* ((state (agent-shell-hq-peek--buffer-state buf))
                    (icon  (agent-shell-hq-peek--svg-icon state))
+                   (aicon (agent-shell-hq-peek--agent-icon buf))
                    (bname (buffer-name buf)))
               (push (list :buffer buf) agent-shell-hq-peek--entries)
               (insert (propertize
                        (concat "      "
                                (propertize " " 'display icon)
                                " "
+                               (if aicon (concat aicon " ") "")
                                bname
                                "\n")
                        'face 'default
